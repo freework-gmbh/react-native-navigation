@@ -83,10 +83,10 @@ RCT_EXPORT_MODULE(RCCManager);
     if ((returnAllPresenters != nil) && (modalPresenterViewController != nil)) {
         [returnAllPresenters addObject:modalPresenterViewController];
     }
-    
+
     while (modalPresenterViewController.presentedViewController != nil) {
         modalPresenterViewController = modalPresenterViewController.presentedViewController;
-        
+
         if (returnAllPresenters != nil) {
             [returnAllPresenters addObject:modalPresenterViewController];
         }
@@ -126,7 +126,7 @@ RCT_EXPORT_MODULE(RCCManager);
                      completion:^(BOOL finished)
      {
          [snapshot removeFromSuperview];
-         
+
          if (resolve != nil)
          {
              resolve(nil);
@@ -136,62 +136,41 @@ RCT_EXPORT_MODULE(RCCManager);
 
 -(void)dismissAllModalPresenters:(NSMutableArray*)allPresentedViewControllers resolver:(RCTPromiseResolveBlock)resolve {
     UIViewController *rootViewController = [UIApplication sharedApplication].delegate.window.rootViewController;
-    
+
     if (allPresentedViewControllers.count > 0)
     {
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),^
                        {
-                           __block NSUInteger counter = 0;
                            for (UIViewController *viewController in allPresentedViewControllers)
                            {
-                               counter++;
-                               
-                               
-                               if (viewController.presentedViewController != nil) {
+                               if (viewController.presentedViewController != nil)
+                               {
                                    dispatch_semaphore_t dismiss_sema = dispatch_semaphore_create(0);
-                                   
+
                                    dispatch_async(dispatch_get_main_queue(), ^
                                                   {
                                                       [viewController dismissViewControllerAnimated:NO completion:^()
                                                        {
-                                                           if (rootViewController != viewController) {
-                                                               [[RCCManager sharedIntance] unregisterController:viewController];
-                                                           }
-                                                           
-                                                           if (counter == allPresentedViewControllers.count && allPresentedViewControllers.count > 0) {
-                                                               [allPresentedViewControllers removeAllObjects];
-                                                               
-                                                               if (resolve != nil) {
-                                                                   resolve(nil);
-                                                               }
-                                                           }
                                                            dispatch_semaphore_signal(dismiss_sema);
                                                        }];
                                                   });
-                                   
-                                   dispatch_semaphore_wait(dismiss_sema, DISPATCH_TIME_FOREVER);
-                               }
-                               else {
-                                   if (rootViewController != viewController) {
-                                       [[RCCManager sharedIntance] unregisterController:viewController];
-                                   }
-                                   if (counter == allPresentedViewControllers.count && allPresentedViewControllers.count > 0)
-                                   {
-                                       [allPresentedViewControllers removeAllObjects];
 
-                                       if (resolve != nil) {
-                                           dispatch_async(dispatch_get_main_queue(), ^
-                                                          {
-                                                              resolve(nil);
-                                                          });
-                                       }
-                                   }
+                                   dispatch_semaphore_wait(dismiss_sema, DISPATCH_TIME_FOREVER);
+                               } else {
+                                   [[RCCManager sharedIntance] unregisterController:viewController];
                                }
                            }
+
+                           dispatch_async(dispatch_get_main_queue(), ^{
+                              resolve(nil);
+                           });
                        });
-    } else if (resolve != nil) {
-        resolve(nil);
+        return;
     }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        resolve(nil);
+    });
 }
 
 #pragma mark - RCT exported methods
@@ -202,7 +181,7 @@ RCT_EXPORT_METHOD(
         [self deferSetRootControllerWhileBridgeLoading:layout animationType:animationType globalProps:globalProps resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject];
         return;
     }
-    
+
     dispatch_async(dispatch_get_main_queue(), ^{
         [self performSetRootController:layout animationType:animationType globalProps:globalProps];
         resolve(nil);
@@ -219,30 +198,30 @@ RCT_EXPORT_METHOD(
 }
 
 -(void)performSetRootController:(NSDictionary*)layout animationType:(NSString*)animationType globalProps:(NSDictionary*)globalProps {
-    
+
     NSMutableDictionary *modifiedGloablProps = [globalProps mutableCopy];
     modifiedGloablProps[GLOBAL_SCREEN_ACTION_COMMAND_TYPE] = COMMAND_TYPE_INITIAL_SCREEN;
-    
+
     // first clear the registry to remove any refernece to the previous controllers
     [[RCCManager sharedInstance] clearModuleRegistry];
     [[RCCManager sharedInstance] setAppStyle:nil];
-    
+
     NSDictionary *appStyle = layout[@"props"][@"appStyle"];
     if (appStyle) {
         [[RCCManager sharedIntance] setAppStyle:appStyle];
-        
+
         if([appStyle[@"autoAdjustScrollViewInsets"] boolValue] == YES) {
             [RNNSwizzles applySwizzles];
         }
     }
-    
+
     // create the new controller
     UIViewController *controller = [RCCViewController controllerWithLayout:layout globalProps:modifiedGloablProps bridge:[[RCCManager sharedInstance] getBridge]];
     if (controller == nil) return;
-    
+
     id<UIApplicationDelegate> appDelegate = [UIApplication sharedApplication].delegate;
     BOOL animated = !((appDelegate.window.rootViewController == nil) || ([animationType isEqualToString:@"none"]));
-    
+
     // if we're animating - add a snapshot now
     UIViewController *presentedViewController = nil;
     UIView *snapshot = nil;
@@ -251,11 +230,11 @@ RCT_EXPORT_METHOD(
             presentedViewController = appDelegate.window.rootViewController.presentedViewController;
         else
             presentedViewController = appDelegate.window.rootViewController;
-        
+
         snapshot = [presentedViewController.view snapshotViewAfterScreenUpdates:NO];
         [appDelegate.window.rootViewController.view addSubview:snapshot];
     }
-    
+
     // dismiss the modal controllers without animation just so they can be released
     [self dismissAllControllers:@"none" resolver:^(id result)
      {
@@ -263,7 +242,7 @@ RCT_EXPORT_METHOD(
          appDelegate.window.rootViewController = controller;
          [appDelegate.window makeKeyAndVisible];
          [presentedViewController dismissViewControllerAnimated:NO completion:nil];
-         
+
          if (animated) {
              // move the snaphot to the new root and animate it
              [appDelegate.window.rootViewController.view addSubview:snapshot];
@@ -283,11 +262,11 @@ RCT_EXPORT_METHOD(
 RCT_EXPORT_METHOD(
                   DrawerControllerIOS:(NSString*)controllerId performAction:(NSString*)performAction actionParams:(NSDictionary*)actionParams) {
     if (!controllerId || !performAction) return;
-    
+
     id<RCCDrawerDelegate> controller = [[RCCManager sharedIntance] getControllerWithId:controllerId componentType:@"DrawerControllerIOS"];
     if (!controller || (![controller isKindOfClass:[RCCDrawerController class]] && ![controller isKindOfClass:[RCCTheSideBarManagerViewController class]])) return;
     return [controller performAction:performAction actionParams:actionParams bridge:[[RCCManager sharedIntance] getBridge]];
-    
+
 }
 
 RCT_EXPORT_METHOD(
@@ -297,7 +276,7 @@ RCT_EXPORT_METHOD(
                                                 error:[RCCManagerModule rccErrorWithCode:RCCManagerModuleMissingParamsErrorCode description:@"missing params"]];
         return;
     }
-    
+
     RCCTabBarController* controller = [[RCCManager sharedInstance] getControllerWithId:controllerId componentType:@"TabBarControllerIOS"];
     if (!controller || ![controller isKindOfClass:[RCCTabBarController class]]) {
         [RCCManagerModule handleRCTPromiseRejectBlock:reject
@@ -318,29 +297,30 @@ RCT_EXPORT_METHOD(
 }
 
 RCT_EXPORT_METHOD(
-                  showController:(NSDictionary*)layout animationType:(NSString*)animationType globalProps:(NSDictionary*)globalProps resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
-    
+                  showController:(NSDictionary*)layout animationType:(NSString*)animationType globalProps:(NSDictionary*)globalProps resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+{
+
     NSMutableDictionary *modifiedGlobalProps = [globalProps mutableCopy];
     modifiedGlobalProps[GLOBAL_SCREEN_ACTION_COMMAND_TYPE] = COMMAND_TYPE_SHOW_MODAL;
-    
+
     UIViewController *controller = [RCCViewController controllerWithLayout:layout globalProps:modifiedGlobalProps bridge:[[RCCManager sharedInstance] getBridge]];
     if (controller == nil) {
         [RCCManagerModule handleRCTPromiseRejectBlock:reject
                                                 error:[RCCManagerModule rccErrorWithCode:RCCManagerModuleCantCreateControllerErrorCode description:@"could not create controller"]];
         return;
     }
-    
+
     if (layout[@"props"] && [layout[@"props"] isKindOfClass:[NSDictionary class]] && layout[@"props"][@"style"] && [layout[@"props"][@"style"] isKindOfClass: [NSDictionary class]]) {
-        
+
         NSDictionary *style = layout[@"props"][@"style"];
         if (style[@"modalPresentationStyle"] && [style[@"modalPresentationStyle"] isKindOfClass:[NSString class]]) {
-            
+
             NSString *presentationStyle = style[@"modalPresentationStyle"];
             UIModalPresentationStyle modalPresentationStyle = [RCTConvert UIModalPresentationStyle:presentationStyle];
             controller.modalPresentationStyle = modalPresentationStyle;
         }
     }
-    
+
     [[RCCManagerModule lastModalPresenterViewController] presentViewController:controller
                                                                       animated:![animationType isEqualToString:@"none"]
                                                                     completion:^(){ resolve(nil); }];
@@ -383,17 +363,12 @@ RCT_EXPORT_METHOD(dismissController:(NSString*)animationType resolver:(RCTPromis
     UIViewController* vc = [RCCManagerModule lastModalPresenterViewController];
     if ([self viewControllerIsModal:vc]) {
         [[RCCManager sharedIntance] unregisterController:vc];
-        
+
         [vc dismissViewControllerAnimated:![animationType isEqualToString:@"none"]
-                               completion:^(){ 
-                                   // This fixes weird ios tabBar layout bug after presenting a modal on top of UITabBarController
-                                   UIViewController* rootVC = [UIApplication sharedApplication].delegate.window.rootViewController;
-                                   if ([rootVC isKindOfClass:[UITabBarController class]]) {
-                                       [rootVC.view setNeedsLayout];
-                                   }
-                                   resolve(nil);
-                                    }];
-    } else {
+                               completion:^(){ resolve(nil); }];
+    }
+    else
+    {
         resolve(nil);
     }
 }
@@ -403,16 +378,16 @@ RCT_EXPORT_METHOD(dismissAllControllers:(NSString*)animationType resolver:(RCTPr
         resolve(nil);
         return;
     }
-    
+
     NSMutableArray *allPresentedViewControllers = [NSMutableArray array];
     [RCCManagerModule modalPresenterViewControllers:allPresentedViewControllers];
-    
+
     BOOL animated = ![animationType isEqualToString:@"none"];
     if (animated) {
         id<UIApplicationDelegate> appDelegate = [UIApplication sharedApplication].delegate;
         UIView *snapshot = [appDelegate.window snapshotViewAfterScreenUpdates:NO];
         [appDelegate.window addSubview:snapshot];
-        
+
         [self dismissAllModalPresenters:allPresentedViewControllers resolver:^(id result)
          {
              [self animateSnapshot:snapshot animationType:animationType resolver:resolve];
