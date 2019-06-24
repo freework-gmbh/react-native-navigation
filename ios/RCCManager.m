@@ -17,13 +17,13 @@
 + (instancetype)sharedInstance {
     static RCCManager *sharedInstance = nil;
     static dispatch_once_t onceToken = 0;
-    
+
     dispatch_once(&onceToken,^{
         if (sharedInstance == nil) {
             sharedInstance = [[RCCManager alloc] init];
         }
     });
-    
+
     return sharedInstance;
 }
 
@@ -35,7 +35,7 @@
     self = [super init];
     if (self) {
         self.modulesRegistry = [@{} mutableCopy];
-        
+
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(onRNReload) name:RCTBridgeWillReloadNotification object:nil];
     }
     return self;
@@ -49,7 +49,7 @@
         NSString* value = [arguments objectAtIndex:i+1];
         [mutableArguments setObject:value forKey:key];
     }
-    
+
     return mutableArguments;
 }
 
@@ -68,13 +68,13 @@
     if (controller == nil || componentId == nil) {
         return;
     }
-    
+
     NSMutableDictionary *componentsDic = self.modulesRegistry[componentType];
     if (componentsDic == nil) {
         componentsDic = [@{} mutableCopy];
         self.modulesRegistry[componentType] = componentsDic;
     }
-    
+
     /*
      TODO: we really want this error, but we need to unregister controllers when they dealloc
      if (componentsDic[componentId])
@@ -82,13 +82,13 @@
      [self.sharedBridge.redBox showErrorMessage:[NSString stringWithFormat:@"Controllers: controller with id %@ is already registered. Make sure all of the controller id's you use are unique.", componentId]];
      }
      */
-    
+
     componentsDic[componentId] = controller;
 }
 
 -(void)unregisterController:(UIViewController*)vc {
     if (vc == nil) return;
-    
+
     for (NSString *key in [self.modulesRegistry allKeys]) {
         NSMutableDictionary *componentsDic = self.modulesRegistry[key];
         for (NSString *componentID in [componentsDic allKeys]) {
@@ -104,14 +104,14 @@
     if (componentId == nil) {
         return nil;
     }
-    
+
     id component = nil;
-    
+
     NSMutableDictionary *componentsDic = self.modulesRegistry[componentType];
     if (componentsDic != nil) {
         component = componentsDic[componentId];
     }
-    
+
     return component;
 }
 
@@ -122,7 +122,7 @@
             return controllerId;
         }
     }
-    
+
     for (NSString *key in [self.modulesRegistry allKeys]) {
         NSMutableDictionary *componentsDic = self.modulesRegistry[key];
         for (NSString *componentID in [componentsDic allKeys]) {
@@ -141,11 +141,20 @@
 
 -(void)initBridgeWithBundleURL:(NSURL *)bundleURL launchOptions:(NSDictionary *)launchOptions {
     if (self.sharedBridge && [self.sharedBridge isValid]) return;
-    
+
     self.bundleURL = bundleURL;
     self.sharedBridge = [[RCTBridge alloc] initWithDelegate:self launchOptions:launchOptions];
-    
+
     [[self class] showSplashScreen];
+}
+
+-(void)initBridgeWithDelegate:(id<RCTBridgeDelegate>)delegate launchOptions:(NSDictionary *)launchOptions {
+    if (self.sharedBridge && [self.sharedBridge isValid]) return;
+
+     self.sharedBridge = [[RCTBridge alloc] initWithDelegate:delegate launchOptions:launchOptions];
+    self.bundleURL = [delegate sourceURLForBridge:self.sharedBridge];
+
+     [[self class] showSplashScreen];
 }
 
 -(RCTBridge*)getBridge {
@@ -167,24 +176,24 @@
         [self showSplashScreenViewController:viewControllerFromLaunchStoryboard];
         return;
     }
-    
+
     CGRect screenBounds = [UIScreen mainScreen].bounds;
     UIViewController* viewControllerFromLaunchNib = [self viewControllerFromLaunchNibForScreenBounds:screenBounds];
     if (viewControllerFromLaunchNib) {
         [self showSplashScreenViewController:viewControllerFromLaunchNib];
         return;
     }
-    
+
     UIViewController* viewControllerFromLaunchImage = [self viewControllerFromLaunchImageForScreenBounds:screenBounds];
     if (viewControllerFromLaunchImage) {
         [self showSplashScreenViewController:viewControllerFromLaunchImage];
         return;
     }
-    
+
     UIViewController* viewController = [[UIViewController alloc] init];
     viewController.view.frame = screenBounds;
     viewController.view.backgroundColor = [UIColor whiteColor];
-    
+
     [self showSplashScreenViewController:viewController];
 }
 
@@ -193,7 +202,7 @@
     if (launchStoryboardName == nil) {
         return nil;
     }
-    
+
     @try {
         UIStoryboard* storyboard = [UIStoryboard storyboardWithName:launchStoryboardName bundle:nil];
         return storyboard.instantiateInitialViewController;
@@ -207,18 +216,18 @@
     if (launchStoryboardName == nil) {
         return nil;
     }
-    
+
     @try {
         id nibContents = [[NSBundle mainBundle] loadNibNamed:launchStoryboardName owner:self options:nil];
         if (!nibContents || [nibContents count] == 0) {
             return nil;
         }
-        
+
         id firstObject = [nibContents firstObject];
         if (![firstObject isKindOfClass:[UIView class]]) {
             return nil;
         }
-        
+
         UIViewController* viewController = [[UIViewController alloc] init];
         viewController.view = (UIView *)firstObject;
         viewController.view.frame = screenBounds;
@@ -230,9 +239,9 @@
 
 + (UIViewController *)viewControllerFromLaunchImageForScreenBounds:(CGRect)screenBounds {
     //load the splash from the default image or from LaunchImage in the xcassets
-    
+
     CGFloat screenHeight = screenBounds.size.height;
-    
+
     NSString* imageName = @"Default";
     if (screenHeight == 568)
         imageName = [imageName stringByAppendingString:@"-568h"];
@@ -240,13 +249,13 @@
         imageName = [imageName stringByAppendingString:@"-667h"];
     else if (screenHeight == 736)
         imageName = [imageName stringByAppendingString:@"-736h"];
-    
+
     //xcassets LaunchImage files
     UIImage *image = [UIImage imageNamed:imageName];
     if (image == nil)
     {
       imageName = @"LaunchImage";
-      
+
       if (screenHeight == 480)
         imageName = [imageName stringByAppendingString:@"-700"];
       if (screenHeight == 568)
@@ -256,7 +265,7 @@
       else if (screenHeight == 736)
         imageName = [imageName stringByAppendingString:@"-800-Portrait-736h"];
       else if (screenHeight == 768)
-        imageName = [imageName stringByAppendingString:@"-Landscape"]; 
+        imageName = [imageName stringByAppendingString:@"-Landscape"];
       else if (screenHeight == 812)
         imageName = [imageName stringByAppendingString:@"-1100-Portrait-2436h"];
       else if (screenHeight == 1024)
@@ -264,17 +273,17 @@
 
       image = [UIImage imageNamed:imageName];
     }
-    
+
     if (image == nil) {
         return nil;
     }
-    
+
     UIViewController* viewController = [[UIViewController alloc] init];
-    
+
     UIImageView* imageView = [[UIImageView alloc] initWithImage:image];
     viewController.view = imageView;
     viewController.view.frame = screenBounds;
-    
+
     return viewController;
 }
 
@@ -291,7 +300,7 @@
 -(void)setAppStyle:(NSDictionary*)appStyle {
     self.globalAppStyle = [NSDictionary dictionaryWithDictionary:appStyle];
     [self applyAppStyle];
-    
+
 }
 
 -(void)applyAppStyle {
